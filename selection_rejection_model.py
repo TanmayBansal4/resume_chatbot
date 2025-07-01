@@ -84,8 +84,8 @@ def process_new_resumes(folder_path, shortlisted_embeds, rejected_embeds):
             print(f"\n[Error] Failed to process {filename}: {e}")
 
 if __name__ == "__main__":
-    summaries_file = "C:/Users/mridu/Downloads/dataset/parsed_resumes.txt"
-    new_resume_folder = "C:/Users/mridu/Downloads/dataset/new1"
+    summaries_file = "path_to/parsed_resumes.txt"
+    new_resume_folder = "path_to/new_resumes"
 
     print("Reading labeled resume summaries...")
     summaries = load_resume_summaries(summaries_file)
