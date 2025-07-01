@@ -69,9 +69,9 @@ def parse_resumes_to_single_text(folder_path, output_file):
         except Exception as e:
             print(f"Error with {file_name}: {e}")
 
-shortlisted_folder = "C:/Users/mridu/Downloads/dataset/ShortlistedDS"
-rejected_folder = "C:/Users/mridu/Downloads/dataset/RejectedDS"
-output_file = "C:/Users/mridu/Downloads/dataset/parsed_resumes.txt"
+shortlisted_folder = "path_to/ShortlistedDS"
+rejected_folder = "path_to/RejectedDS"
+output_file = "path_to/parsed_resumes.txt"
 
 open(output_file, "w").close()
 
