@@ -43,7 +43,7 @@ def split_summaries(text):
     return shortlisted, rejected
 
 if __name__ == "__main__":
-    summaries_file = "C:/Users/mridu/Downloads/dataset/parsed_resumes.txt"
+    summaries_file = "path_to/parsed_resumes.txt"
 
     print("📄 Reading labeled resume summaries...")
     summaries = load_resume_summaries(summaries_file)
