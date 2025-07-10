@@ -1,4 +1,5 @@
 import os
+import json
 import pdfplumber
 from docx import Document
 from sentence_transformers import SentenceTransformer, util
@@ -13,32 +14,22 @@ def extract_text_from_pdf(file_path):
     with pdfplumber.open(file_path) as pdf:
         return "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
 
-def load_resume_summaries(file_path):
+def load_resume_summaries_from_json(file_path):
     with open(file_path, "r", encoding="utf-8") as f:
-        return f.read()
+        data = json.load(f)
 
-def split_summaries(text):
     shortlisted = []
     rejected = []
-    current = []
-    label = None
 
-    for line in text.splitlines():
-        if "Shortlisted" in line:
-            if current and label:
-                (shortlisted if label == "Shortlisted" else rejected).append("\n".join(current).strip())
-            current = []
-            label = "Shortlisted"
-        elif "Rejected" in line:
-            if current and label:
-                (shortlisted if label == "Shortlisted" else rejected).append("\n".join(current).strip())
-            current = []
-            label = "Rejected"
-        else:
-            current.append(line)
-    
-    if current and label:
-        (shortlisted if label == "Shortlisted" else rejected).append("\n".join(current).strip())
+    for entry in data:
+        summary = entry.get("Summary", "").strip()
+        folder = entry.get("Folder", "").lower()
+        status = entry.get("Folder", "").lower()
+
+        if "shortlist" in status:
+            shortlisted.append(summary)
+        elif "reject" in status:
+            rejected.append(summary)
 
     return shortlisted, rejected
 
@@ -84,14 +75,13 @@ def process_new_resumes(folder_path, shortlisted_embeds, rejected_embeds):
             print(f"\n[Error] Failed to process {filename}: {e}")
 
 if __name__ == "__main__":
-    summaries_file = "path_to/parsed_resumes.txt"
-    new_resume_folder = "path_to/new_resumes"
+    json_file = "PATH_TO/parsed_resumes.json"
+    new_resume_folder = "PATH_TO/new_resumes"
 
-    print("Reading labeled resume summaries...")
-    summaries = load_resume_summaries(summaries_file)
+    print("Reading labeled resume summaries from JSON...")
+    shortlisted, rejected = load_resume_summaries_from_json(json_file)
 
-    print("Separating shortlisted and rejected summaries...")
-    shortlisted, rejected = split_summaries(summaries)
+    print(f"Loaded {len(shortlisted)} shortlisted and {len(rejected)} rejected summaries.")
 
     print("Encoding vectors...")
     shortlisted_embeds = build_embeddings(shortlisted)
