@@ -1,62 +1,68 @@
 import os
-import re
+import json
 from uuid import uuid4
 
 from qdrant_client import QdrantClient, models
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.llms import Ollama
 
-llm = Ollama(model="deepseek-r1:7b")
+
+llm = Ollama(model="deepseek-llm:7b")
 embedder = OllamaEmbeddings(model="nomic-embed-text")
 
-qdrant = qdrant_client = QdrantClient(
-    url="qdrant_url_here",
-    api_key="api_key_here",
+qdrant = QdrantClient(
+    url="url to qdrant or localhost",
+    api_key="API_Key here",
 )
-
 
 collection_name = "resume-collection"
 
-def load_resume_summaries(file_path):
+
+
+def load_resume_summaries_from_json(file_path):
     with open(file_path, "r", encoding="utf-8") as f:
-        return f.read()
+        data = json.load(f)
 
-def split_summaries(text):
-    shortlisted = []
-    rejected = []
+    shortlisted, rejected = [], []
 
-    blocks = re.split(r"={5,}", text)  # split on =====
-
-    for block in blocks:
-        block = block.strip()
-        if not block:
-            continue
-
-        match = re.search(r"\*\*Status:\*\*\s*(Shortlisted|Rejected)", block, re.IGNORECASE)
-        if match:
-            status = match.group(1).strip().lower()
-            if status.startswith("shortlist"):
-                shortlisted.append(block)
-            elif status.startswith("reject"):
-                rejected.append(block)
+    for entry in data:
+        summary = entry.get("Summary", "").strip()
+        status = entry.get("Folder", "").lower()
+        if "shortlist" in status:
+            shortlisted.append({"text": summary, "status": "Shortlisted"})
+        elif "reject" in status:
+            rejected.append({"text": summary, "status": "Rejected"})
+        else:
+            print(f"⚠️ Unknown status for entry: {status}")
 
     return shortlisted, rejected
 
+
+def save_chat_history(chat_history, file="chat_history.json"):
+    with open(file, "w") as f:
+        json.dump(chat_history, f, indent=2)
+
+
+def load_chat_history(file="chat_history.json"):
+    if os.path.exists(file):
+        with open(file) as f:
+            return json.load(f)
+    return []
+
+
 if __name__ == "__main__":
-    summaries_file = "path_to/parsed_resumes.txt"
+    summaries_file = "PATH_TO/parsed_resumes.json"
 
-    print("📄 Reading labeled resume summaries...")
-    summaries = load_resume_summaries(summaries_file)
-
-    print("🔀 Splitting summaries...")
-    shortlisted, rejected = split_summaries(summaries)
-
+    print("📄 Reading labeled resume summaries from JSON...")
+    shortlisted, rejected = load_resume_summaries_from_json(summaries_file)
     print(f"✅ Loaded: {len(shortlisted)} shortlisted, {len(rejected)} rejected")
 
-    print("🔢 Embedding resumes...")
     all_resumes = shortlisted + rejected
-    vectors = embedder.embed_documents(all_resumes)
-    ids = [str(uuid4()) for _ in all_resumes]
+    texts = [entry["text"] for entry in all_resumes]
+
+    print("🔢 Embedding resumes...")
+    vectors = embedder.embed_documents(texts)
+    ids = [str(uuid4()) for _ in texts]
 
     if not qdrant.collection_exists(collection_name=collection_name):
         qdrant.create_collection(
@@ -74,34 +80,48 @@ if __name__ == "__main__":
             models.PointStruct(
                 id=ids[i],
                 vector=vectors[i],
-                payload={"text": all_resumes[i]}
+                payload={
+                    "text": texts[i],
+                    "status": all_resumes[i]["status"]
+                }
             )
             for i in range(len(all_resumes))
         ]
     )
-
     print("✅ All resumes uploaded to Qdrant!")
 
-    print("\n🤖 Let’s find the best candidates for your requirement!")
+    print("\n🤖 Ready to chat! Memory is ON. Type 'quit' to exit.\n")
+
+    chat_history = load_chat_history()
 
     while True:
-        user_query = input("What skills, experience or criteria do you want? (type 'quit' to exit) ➜ ").strip()
+        user_query = input("➜ You: ").strip()
         if user_query.lower() in {"quit", "exit"}:
-            print("👋 Exiting. Have a great day!")
+            print("👋 Exiting. Your chat history is saved.")
+            save_chat_history(chat_history)
             break
 
-        query_vector = embedder.embed_query(user_query)
+        chat_history.append({"role": "user", "content": user_query})
 
+        query_vector = embedder.embed_query(user_query)
         search_result = qdrant.search(
             collection_name=collection_name,
             query_vector=query_vector,
-            limit=5
+            limit=3
         )
 
-        print("\n🔍 Top Matches:\n")
-        for i, hit in enumerate(search_result, 1):
-            payload = hit.payload
-            score = hit.score
-            print(f"#{i} — Score: {score:.4f}\n")
-            print(payload["text"][:500])  # Show first 500 chars
-            print("\n" + "=" * 40 + "\n")
+        relevant_chunks = "\n\n".join([hit.payload["text"][:300] for hit in search_result])
+
+        prompt = "The following is a conversation between a helpful assistant and a user.\n\n"
+        for turn in chat_history[-10:]:
+            prompt += f"{turn['role'].capitalize()}: {turn['content']}\n"
+
+        prompt += f"\nRelevant Resume Chunks:\n{relevant_chunks}\n\n"
+        prompt += f"Assistant:"
+
+        bot_response = llm(prompt)
+        print(f"\n🤖 {bot_response.strip()}\n")
+
+        chat_history.append({"role": "assistant", "content": bot_response.strip()})
+
+        save_chat_history(chat_history)
