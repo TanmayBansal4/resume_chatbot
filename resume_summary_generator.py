@@ -1,11 +1,14 @@
 import os
+import json
 import docx2txt
 from PyPDF2 import PdfReader
 from langchain_community.chat_models import ChatOllama
 from langchain_core.messages import HumanMessage, SystemMessage
 
+# === Initialize LLM
 model = ChatOllama(model="deepseek-llm:7b")
 
+# === Extract text from resume file
 def extract_text_from_file(file_path):
     if file_path.lower().endswith(".pdf"):
         reader = PdfReader(file_path)
@@ -15,6 +18,7 @@ def extract_text_from_file(file_path):
     else:
         return ""
 
+# === Generate readable summary using LLM
 def summarize_resume(text, folder_name):
     system_prompt = """
 You are a resume summarizer. Extract the following from a resume:
@@ -43,13 +47,26 @@ Folder: {folder_name}
     response = model.invoke(messages)
     return response.content.strip()
 
+# === Append output to one .txt file
 def append_to_output_file(file_name, summary, output_path):
     with open(output_path, "a", encoding="utf-8") as f:
         f.write(f"\n\n===== {file_name} =====\n")
         f.write(summary)
         f.write("\n" + "=" * 50 + "\n")
 
-def parse_resumes_to_single_text(folder_path, output_file):
+# === Extract key info from summary for JSON
+def parse_summary_to_dict(summary, file_name, folder_name):
+    # Very simple extraction using split lines.
+    # For a robust solution, you should use regex or proper NLP parsing.
+    result = {
+        "FileName": file_name,
+        "Folder": folder_name,
+        "Summary": summary
+    }
+    return result
+
+# === Main function to scan a folder
+def parse_resumes_to_single_text(folder_path, output_file, json_list):
     folder_name = os.path.basename(folder_path)
     all_files = os.listdir(folder_path)
 
@@ -65,17 +82,35 @@ def parse_resumes_to_single_text(folder_path, output_file):
             text = extract_text_from_file(full_path)
             summary = summarize_resume(text, folder_name)
             name_without_ext = os.path.splitext(file_name)[0]
+
             append_to_output_file(name_without_ext, summary, output_file)
+
+            parsed = parse_summary_to_dict(summary, name_without_ext, folder_name)
+            json_list.append(parsed)
+
         except Exception as e:
             print(f"Error with {file_name}: {e}")
 
-shortlisted_folder = "path_to/ShortlistedDS"
-rejected_folder = "path_to/RejectedDS"
-output_file = "path_to/parsed_resumes.txt"
+# === Define your folders and output files
+shortlisted_folder = "PATH_TO/ShortlistedDS"
+rejected_folder = "PATH_TO/RejectedDS"
+output_file = "PATH_TO/parsed_resumes.txt"
+output_json = "PATH_TO/parsed_resumes.json"
 
+# === Clear existing output files (optional)
 open(output_file, "w").close()
+open(output_json, "w").close()
 
-parse_resumes_to_single_text(shortlisted_folder, output_file)
-parse_resumes_to_single_text(rejected_folder, output_file)
+# === Store JSON summaries here
+json_results = []
+
+# === Run on both folders
+parse_resumes_to_single_text(shortlisted_folder, output_file, json_results)
+parse_resumes_to_single_text(rejected_folder, output_file, json_results)
+
+# === Save JSON file
+with open(output_json, "w", encoding="utf-8") as jf:
+    json.dump(json_results, jf, indent=4)
 
 print(f"\nAll summaries saved to: {output_file}")
+print(f"Structured JSON saved to: {output_json}")
